@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merger version="3"><dataSet config="main"><source path="/Users/apple/RxAndroid-master/rxandroid/src/main/assets"/><source path="/Users/apple/RxAndroid-master/rxandroid/build/generated/assets/shaders/debug"/></dataSet><dataSet config="debug"><source path="/Users/apple/RxAndroid-master/rxandroid/src/debug/assets"/></dataSet></merger>

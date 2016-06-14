@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merger version="3"><dataSet config="main"><source path="/Users/apple/RxTest/rxandroid/src/main/res"/><source path="/Users/apple/RxTest/rxandroid/build/generated/res/rs/release"/><source path="/Users/apple/RxTest/rxandroid/build/generated/res/generated/release"/></dataSet><dataSet config="release"><source path="/Users/apple/RxTest/rxandroid/src/release/res"/></dataSet><mergedItems/></merger>

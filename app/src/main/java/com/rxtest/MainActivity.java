@@ -7,18 +7,15 @@ import android.support.design.widget.Snackbar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
-import android.util.Log;
 import android.view.View;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.widget.Toast;
 
 import com.google.gson.Gson;
 
 import java.io.Serializable;
+import java.util.Random;
 
 import rx.Observable;
-import rx.Scheduler;
 import rx.Subscriber;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.functions.Action0;
@@ -52,160 +49,100 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
-
-    abstract class ActionUi implements Action0 {
-
-        @Override
-        public void call() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    onCall();
-                }
-            });
-        }
-
-        public abstract void onCall();
-    }
-
-    void onHttpEvent(){
-
-        Observable<LoginEntity> loginThread = loginObservable();
+        Observable<LoginEntity> validateThread = validateObservable();
         final Observable<CheckUpdateEntity> checkVersionTask = checkUpdateObservable();
-        final Observable thread1 = otherThread("thread1",1000);
+        final Observable thread1 = otherThread("thread1",2000);
         final Observable thread2 = otherThread("thread2",3000);
-        final Observable thread3 = otherThread("thread3",4000);
+        final Observable thread3 = otherThread("thread3",1000);
         final Observable thread4 = otherThread("thread4",5000);
 
-        loginThread.flatMap(new Func1<LoginEntity, Observable<CheckUpdateEntity>>() {
-            @Override
-            public Observable<CheckUpdateEntity> call(LoginEntity entity) {
-                return checkVersionTask;
-            }
-        })
-        .flatMap(new Func1<CheckUpdateEntity, Observable<?>>() {
-            @Override
-            public Observable call(CheckUpdateEntity checkUpdateEntity) {
-                return Observable.merge(thread1,thread2,thread3,thread4);
-            }
-        })
-        .doOnSubscribe(new ActionUi() {
-            @Override
-            public void onCall() {
-                System.out.println("开始登陆,发起动作,loading...");
-            }
-        })
-        .subscribe(onSuccess, onError);
+
+        //主逻辑
+        loginTask = validateThread
+                .flatMap(new Func1<LoginEntity, Observable<CheckUpdateEntity>>() {
+                    @Override
+                    public Observable<CheckUpdateEntity> call(LoginEntity entity) {
+                        System.out.println("validate 结束，flatMap to checkVersion ！"+Thread.currentThread().getName());
+                        return checkVersionTask;
+                    }
+                })
+                .flatMap(new Func1<CheckUpdateEntity, Observable<?>>() {
+                    @Override
+                    public Observable call(CheckUpdateEntity checkUpdateEntity) {
+                        System.out.println("checkVersion 结束，flatMap to OtherThread ！"+Thread.currentThread().getName());
+                        return Observable.merge(thread1,thread2,thread3,thread4);
+                    }
+                });
+
     }
 
-    Action1 onSuccess = new Action1() {
+    private Dialog dialog;
+    private void loading(String msg){
+        dismissLoading();
+        dialog = new AlertDialog.Builder(this)
+                .setTitle("title")
+                .setMessage(msg)
+                .create();
+        dialog.show();
+    }
+    private void dismissLoading(){
+        if(dialog!=null && dialog.isShowing()){
+            dialog.dismiss();
+        }
+    }
+
+    Observable loginTask;
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(loginTask!=null){
+            subscriber.unsubscribe();
+        }
+    }
+
+    Subscriber subscriber = new Subscriber() {
         @Override
-        public void call(Object object) {
+        public void onCompleted() {
+            dismissLoading();
+        }
+
+        @Override
+        public void onError(Throwable e) {
+            dismissLoading();
+            Toast.makeText(MainActivity.this,e.getMessage(),Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        public void onNext(Object o) {
             Toast.makeText(MainActivity.this,"登录成功 ",Toast.LENGTH_SHORT).show();
         }
-    };
+    } ;
 
-    Action1<Throwable> onError = new Action1<Throwable>() {
-        @Override
-        public void call(Throwable throwable) {
-            Toast.makeText(MainActivity.this,"登录异常",Toast.LENGTH_SHORT).show();
-        }
-    };
-
-    Action0 onComplete = new Action0() {
-        @Override
-        public void call() {
-            System.out.println("结束登陆,dismissLoading...");
-        }
-    };
-
-    Observable<Boolean> otherThread(final String name,final int time){
-        return Observable.create(new Observable.OnSubscribe<Boolean>() {
-            @Override
-            public void call(Subscriber<? super Boolean> subscriber) {
-                try {
-                    System.out.println(name+" 正在执行"+name+" ！thread = "+Thread.currentThread().getName());
-                    Thread.sleep(time);
-                    subscriber.onNext(true);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                subscriber.onCompleted();
-            }
-        }).doOnSubscribe(new ActionUi() {
-            @Override
-            public void onCall() {
-                System.out.println(name+" 开始执行 ！");
-            }
-        }).doOnCompleted(new ActionUi() {
-            @Override
-            public void onCall() {
-                System.out.println(name+" 执行完毕 ！");
-            }
-        }).observeOn(AndroidSchedulers.mainThread()).subscribeOn(Schedulers.newThread());
+    void onHttpEvent(){
+        loading("开始登录");
+        loginTask
+                .doOnSubscribe(new Action0() {
+                    @Override
+                    public void call() { System.out.println("登录开始！" +Thread.currentThread().getName());     }
+                })
+                .doOnCompleted(new Action0() {
+                    @Override
+                    public void call() { System.out.println("登录结束！"+Thread.currentThread().getName());      }
+                })
+                .subscribe(subscriber);
     }
 
-    Observable<CheckUpdateEntity> checkUpdateObservable(){
-        return Observable.create(new Observable.OnSubscribe<CheckUpdateEntity>() {
-            @Override
-            public void call(Subscriber<? super CheckUpdateEntity> subscriber) {
-                try {
-                    Thread.sleep(2000);
-                    subscriber.onNext(new CheckUpdateEntity());
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }finally {
-                    subscriber.onCompleted();
-                }
-            }
-        }).doOnSubscribe(new Action0() {
-            @Override
-            public void call() {
-//                loading("正在检查更新");
-                System.out.println("checkVersionTask 开始执行 ！");
-            }
-        }).doOnCompleted(new Action0() {
-            @Override
-            public void call() {
-                System.out.println("checkVersionTask 执行完毕 ！");
-            }
-        }).observeOn(AndroidSchedulers.mainThread()).subscribeOn(Schedulers.newThread());
-    }
-
-    Observable<LoginEntity> loginObservable(){
+    Observable<LoginEntity> validateObservable(){
         return Observable.create(new Observable.OnSubscribe<String>() {
             @Override
             public void call(Subscriber<? super String> subscriber) {
                 try {
                     Thread.sleep(3000);
                     String json = new LoginEntity().fake();
-//                    subscriber.onNext(json);
+                    subscriber.onNext(json);
 //                    subscriber.onNext("连接服务器失败");
-
-                    throw new Exception("http异常");
+//                    throw new Exception("http异常");
 
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -217,23 +154,81 @@ public class MainActivity extends AppCompatActivity {
         }).map(new Func1<String, LoginEntity>() {
             @Override
             public LoginEntity call(String s) {
+                System.out.println("validate 得到json, 正在转换成entity ！"+Thread.currentThread().getName());
                 return new Gson().fromJson(s,LoginEntity.class);
             }
-        }).doOnSubscribe(new ActionUi() {
+        }).doOnSubscribe(new Action0() {
             @Override
-            public void onCall() {
-                System.out.println("validate 开始 ！");
-//                loading("正在校验，请稍候...");
+            public void call() {
+                System.out.println("validate 开始 ！"+Thread.currentThread().getName());
             }
-        }).doOnCompleted(new ActionUi() {
+        }).doOnCompleted(new Action0() {
             @Override
-            public void onCall() {
-                System.out.println("validate 执行完毕 ！");
+            public void call() {
+                System.out.println("validate 执行完毕 ！"+Thread.currentThread().getName());
             }
         }).subscribeOn(Schedulers.newThread()).observeOn(AndroidSchedulers.mainThread());
     }
 
+    Observable<Boolean> otherThread(final String name,final int time){
+        return Observable.create(new Observable.OnSubscribe<Boolean>() {
+            @Override
+            public void call(Subscriber<? super Boolean> subscriber) {
+                try {
+                    System.out.println(name+" 正在执行！thread = "+Thread.currentThread().getName());
+                    Thread.sleep(time);
+                    int count = new Random().nextInt(10);
+                    if(count>5){
+                        subscriber.onNext(true);
+                    }else{
+                        throw new Exception(name+" 执行失败！thread = "+Thread.currentThread().getName());
+                    }
 
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    subscriber.onError(e);
+                }
+                subscriber.onCompleted();
+            }
+        })
+                .doOnSubscribe(new Action0() {
+                    @Override
+                    public void call() {  System.out.println(name+" 开始执行 ！");    }
+                })
+                .doOnCompleted(new Action0() {
+                    @Override
+                    public void call() {  System.out.println(name+" 执行完毕 ！");      }
+                })
+                .observeOn(AndroidSchedulers.mainThread()).subscribeOn(Schedulers.newThread());
+    }
+
+    Observable<CheckUpdateEntity> checkUpdateObservable(){
+        return Observable.create(new Observable.OnSubscribe<CheckUpdateEntity>() {
+            @Override
+            public void call(Subscriber<? super CheckUpdateEntity> subscriber) {
+                try {
+                    Thread.sleep(2000);
+                    subscriber.onNext(new CheckUpdateEntity());
+//                    throw new Exception("检查更新失败");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    subscriber.onError(e);
+                }finally {
+                    subscriber.onCompleted();
+                }
+            }
+        }).doOnSubscribe(new Action0() {
+            @Override
+            public void call() {
+                System.out.println("checkVersionTask 开始执行 ！"+Thread.currentThread().getName());
+            }
+        }).doOnCompleted(new Action0() {
+            @Override
+            public void call() {
+                System.out.println("checkVersionTask 执行完毕 ！"+Thread.currentThread().getName());
+            }
+        }).observeOn(AndroidSchedulers.mainThread()).subscribeOn(Schedulers.newThread());
+    }
 
 
     public class LoginEntity implements Serializable{
@@ -255,25 +250,12 @@ public class MainActivity extends AppCompatActivity {
         public String logisticestatus;
         public String logisticetime;
     }
-
     public class CheckUpdateEntity implements Serializable{
-    }
-
-    Dialog dialog;
-
-    private void loading(String msg){
-        dismissLoading();
-        dialog = new AlertDialog.Builder(this)
-                .setTitle("title")
-                .setMessage(msg)
-                .create();
-        dialog.show();
-    }
-
-    private void dismissLoading(){
-        if(dialog!=null && dialog.isShowing()){
-            dialog.dismiss();
+        boolean isSuccess = false;
+        public boolean isSuccess(){
+            return isSuccess;
         }
     }
+
 
 }

@@ -122,6 +122,10 @@ public class MainActivity extends AppCompatActivity {
     void onHttpEvent(){
         loading("开始登录");
         loginTask
+                .doOnUnsubscribe(new Action0() {
+                    @Override
+                    public void call() {  System.out.println("登录取消！" +Thread.currentThread().getName());     }
+                })
                 .doOnSubscribe(new Action0() {
                     @Override
                     public void call() { System.out.println("登录开始！" +Thread.currentThread().getName());     }
@@ -177,12 +181,13 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     System.out.println(name+" 正在执行！thread = "+Thread.currentThread().getName());
                     Thread.sleep(time);
-                    int count = new Random().nextInt(10);
-                    if(count>5){
-                        subscriber.onNext(true);
-                    }else{
-                        throw new Exception(name+" 执行失败！thread = "+Thread.currentThread().getName());
-                    }
+                    subscriber.onNext(true);
+//                    int count = new Random().nextInt(10);
+//                    if(count>5){
+//                        subscriber.onNext(true);
+//                    }else{
+//                        throw new Exception(name+" 执行失败！thread = "+Thread.currentThread().getName());
+//                    }
 
                 } catch (Exception e) {
                     e.printStackTrace();

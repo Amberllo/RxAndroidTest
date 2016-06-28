@@ -49,31 +49,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        Observable<LoginEntity> validateThread = validateObservable();
-        final Observable<CheckUpdateEntity> checkVersionTask = checkUpdateObservable();
-        final Observable thread1 = otherThread("thread1",2000);
-        final Observable thread2 = otherThread("thread2",3000);
-        final Observable thread3 = otherThread("thread3",1000);
-        final Observable thread4 = otherThread("thread4",5000);
-
-
-        //主逻辑
-        loginTask = validateThread
-                .flatMap(new Func1<LoginEntity, Observable<CheckUpdateEntity>>() {
-                    @Override
-                    public Observable<CheckUpdateEntity> call(LoginEntity entity) {
-                        System.out.println("validate 结束，flatMap to checkVersion ！"+Thread.currentThread().getName());
-                        return checkVersionTask;
-                    }
-                })
-                .flatMap(new Func1<CheckUpdateEntity, Observable<?>>() {
-                    @Override
-                    public Observable call(CheckUpdateEntity checkUpdateEntity) {
-                        System.out.println("checkVersion 结束，flatMap to OtherThread ！"+Thread.currentThread().getName());
-                        return Observable.merge(thread1,thread2,thread3,thread4);
-                    }
-                });
-
     }
 
     private Dialog dialog;
@@ -91,19 +66,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    Observable loginTask;
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if(loginTask!=null){
-            subscriber.unsubscribe();
-        }
+        subscriber.unsubscribe();
     }
 
     Subscriber subscriber = new Subscriber() {
         @Override
         public void onCompleted() {
+            System.out.println("subscriber onCompleted ");
             dismissLoading();
         }
 
@@ -115,13 +87,41 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onNext(Object o) {
+            System.out.println("subscriber onNext "+o);
             Toast.makeText(MainActivity.this,"登录成功 ",Toast.LENGTH_SHORT).show();
         }
     } ;
 
     void onHttpEvent(){
+
+
+
+        final Observable thread1 = otherThread("thread1",2000);
+        final Observable thread2 = otherThread("thread2",3000);
+        final Observable thread3 = otherThread("thread3",1000);
+        final Observable thread4 = otherThread("thread4",5000);
+        final Observable validate = validateObservable();
+        final Observable checkVersion = checkUpdateObservable();
+
         loading("开始登录");
-        loginTask
+        //主逻辑
+        validate
+                .flatMap(new Func1<LoginEntity, Observable<CheckUpdateEntity>>() {
+                    @Override
+                    public Observable<CheckUpdateEntity> call(LoginEntity entity) {
+                        System.out.println("validate 结束，flatMap to checkVersion ！"+Thread.currentThread().getName());
+                        loading("校验成功，正在检查更新...");
+                        return checkVersion;
+                    }
+                })
+                .flatMap(new Func1<CheckUpdateEntity, Observable<?>>() {
+                    @Override
+                    public Observable call(CheckUpdateEntity checkUpdateEntity) {
+                        System.out.println("checkVersion 结束，flatMap to OtherThread ！"+Thread.currentThread().getName());
+                        loading("应用已经是最新版本，正在加载基础数据...");
+                        return Observable.merge(thread1,thread2,thread3,thread4);
+                    }
+                })
                 .doOnUnsubscribe(new Action0() {
                     @Override
                     public void call() {  System.out.println("登录取消！" +Thread.currentThread().getName());     }
@@ -139,39 +139,45 @@ public class MainActivity extends AppCompatActivity {
 
     Observable<LoginEntity> validateObservable(){
         return Observable.create(new Observable.OnSubscribe<String>() {
-            @Override
-            public void call(Subscriber<? super String> subscriber) {
-                try {
-                    Thread.sleep(3000);
-                    String json = new LoginEntity().fake();
-                    subscriber.onNext(json);
-//                    subscriber.onNext("连接服务器失败");
-//                    throw new Exception("http异常");
+                    @Override
+                    public void call(Subscriber<? super String> subscriber) {
+                        try {
+                            System.out.println("validate call ！"+Thread.currentThread().getName());
+                            Thread.sleep(3000);
+                            String json = new LoginEntity().fake();
+                            subscriber.onNext(json);
+        //                    subscriber.onNext("连接服务器失败");
+        //                    throw new Exception("http异常");
 
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    subscriber.onError(e);
-                }finally {
-                    subscriber.onCompleted();
-                }
-            }
-        }).map(new Func1<String, LoginEntity>() {
-            @Override
-            public LoginEntity call(String s) {
-                System.out.println("validate 得到json, 正在转换成entity ！"+Thread.currentThread().getName());
-                return new Gson().fromJson(s,LoginEntity.class);
-            }
-        }).doOnSubscribe(new Action0() {
-            @Override
-            public void call() {
-                System.out.println("validate 开始 ！"+Thread.currentThread().getName());
-            }
-        }).doOnCompleted(new Action0() {
-            @Override
-            public void call() {
-                System.out.println("validate 执行完毕 ！"+Thread.currentThread().getName());
-            }
-        }).subscribeOn(Schedulers.newThread()).observeOn(AndroidSchedulers.mainThread());
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            subscriber.onError(e);
+                        }finally {
+                            subscriber.onCompleted();
+                        }
+                    }
+                })
+                .map(new Func1<String, LoginEntity>() {
+                    @Override
+                    public LoginEntity call(String s) {
+                        System.out.println("validate 得到json, 正在转换成entity ！"+Thread.currentThread().getName());
+                        return new Gson().fromJson(s,LoginEntity.class);
+                    }
+                })
+                .doOnSubscribe(new Action0() {
+                    @Override
+                    public void call() {
+                        System.out.println("validate 开始doOnSubscribe ！"+Thread.currentThread().getName());
+                    }
+                })
+
+                .doOnCompleted(new Action0() {
+                    @Override
+                    public void call() {
+                        System.out.println("validate 执行完毕doOnCompleted ！"+Thread.currentThread().getName());
+                    }
+                 })
+                .subscribeOn(Schedulers.newThread()).observeOn(AndroidSchedulers.mainThread());
     }
 
     Observable<Boolean> otherThread(final String name,final int time){
@@ -196,15 +202,16 @@ public class MainActivity extends AppCompatActivity {
                 subscriber.onCompleted();
             }
         })
+                .subscribeOn(Schedulers.newThread())
                 .doOnSubscribe(new Action0() {
                     @Override
-                    public void call() {  System.out.println(name+" 开始执行 ！");    }
+                    public void call() {  System.out.println(name+" 开始执行 ！ "+Thread.currentThread().getName());    }
                 })
                 .doOnCompleted(new Action0() {
                     @Override
-                    public void call() {  System.out.println(name+" 执行完毕 ！");      }
+                    public void call() {  System.out.println(name+" 执行完毕 ！ "+Thread.currentThread().getName());      }
                 })
-                .observeOn(AndroidSchedulers.mainThread()).subscribeOn(Schedulers.newThread());
+                .observeOn(AndroidSchedulers.mainThread()).subscribeOn(AndroidSchedulers.mainThread());
     }
 
     Observable<CheckUpdateEntity> checkUpdateObservable(){
